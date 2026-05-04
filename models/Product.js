@@ -15,11 +15,15 @@ const productSchema = new mongoose.Schema(
       },
     },
     description: { type: String },
-    category: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Category",
-    required: true,
-  },
+    categories: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Category",
+        required: true,
+      },
+    ],
+    discountPercent: { type: Number, default: 0 },
+    discountPrice: { type: Number, default: 0 },
     slug: { type: String, unique: true },
   },
   { timestamps: true }

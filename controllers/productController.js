@@ -1,10 +1,33 @@
 const Product = require("../models/Product");
 const Category = require("../models/Category");
 const mongoose = require("mongoose");
+
+const parseCategories = (body) => {
+  if (body.categories) {
+    if (Array.isArray(body.categories)) return body.categories;
+    if (typeof body.categories === "string") {
+      try {
+        const parsed = JSON.parse(body.categories);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch (err) {
+        return body.categories
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+    }
+  }
+
+  if (body.category) {
+    return Array.isArray(body.category) ? body.category : [body.category];
+  }
+
+  return [];
+};
 // GET ALL
 exports.getProducts = async (req, res) => {
   try {
-    const products = await Product.find().populate("category");
+    const products = await Product.find().populate("categories");
     res.json(products);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -15,7 +38,7 @@ exports.getProducts = async (req, res) => {
 exports.getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
-      .populate("category");
+      .populate("categories");
 
     if (!product) {
       return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
@@ -31,7 +54,7 @@ exports.getProductById = async (req, res) => {
 exports.getProductBySlug = async (req, res) => {
   try {
     const product = await Product.findOne({ slug: req.params.productSlug })
-      .populate("category");
+      .populate("categories");
 
     if (!product) {
       return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
@@ -52,8 +75,8 @@ exports.getProductsByCategorySlug = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy thể loại" });
     }
 
-    const products = await Product.find({ category: categoryDoc._id })
-      .populate("category") 
+    const products = await Product.find({ categories: categoryDoc._id })
+      .populate("categories") 
       .sort({ createdAt: -1 }); // mới nhất lên đầu
 
     res.json(products);
@@ -64,53 +87,121 @@ exports.getProductsByCategorySlug = async (req, res) => {
 // CREATE
 exports.createProduct = async (req, res) => {
   try {
-    const { category, name } = req.body;
+    const { name, price, discountPercent } = req.body;
+    const categories = parseCategories(req.body);
 
-    // 🔥 kiểm tra category có tồn tại không
-    const checkCategory = await Category.findById(category);
-    if (!checkCategory) {
-      return res.status(400).json({ message: "Category không tồn tại" });
+    if (categories.length === 0) {
+      return res.status(400).json({ message: "Phải chọn ít nhất một danh mục" });
     }
 
-    // Xử lý images từ files upload
+    const validCategories = await Category.find({ _id: { $in: categories } });
+    if (validCategories.length !== categories.length) {
+      return res.status(400).json({ message: "Một hoặc nhiều thể loại không tồn tại" });
+    }
+
+    const parsedPrice = parseFloat(price);
+    const parsedDiscount = discountPercent ? parseFloat(discountPercent) : 0;
+
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return res.status(400).json({ message: "Giá phải là số hợp lệ" });
+    }
+    if (parsedDiscount < 0 || parsedDiscount > 100) {
+      return res.status(400).json({ message: "% giảm phải từ 0 đến 100" });
+    }
+
+    const discountPrice = Math.round(parsedPrice * (100 - parsedDiscount) / 100);
+
+    // 🔥 FIX CHUẨN Ở ĐÂY
     let images = [];
+
     if (req.files) {
-      if (req.files.images) {
+      // trường hợp upload.array("images")
+      if (Array.isArray(req.files)) {
+        images = req.files.map(file => `/uploads/${file.filename}`);
+      }
+
+      // trường hợp upload.fields([{ name: "images" }])
+      else if (req.files.images) {
         images = req.files.images.map(file => `/uploads/${file.filename}`);
-      } else if (req.files.image) {
-        images = req.files.image.map(file => `/uploads/${file.filename}`);
       }
     }
 
-    // Tạo slug từ name
+    // Debug
+    console.log("FILES:", req.files);
+    console.log("IMAGES:", images);
+
     const slug = name.replace(/\s+/g, '-').toLowerCase().replace(/[^a-z0-9-]/g, '');
 
-    const newProduct = new Product({ ...req.body, slug, images });
-    const saved = await newProduct.save();
+    const newProduct = new Product({
+      ...req.body,
+      categories,
+      price: parsedPrice,
+      discountPercent: parsedDiscount,
+      discountPrice,
+      slug,
+      images,
+    });
 
+    const saved = await newProduct.save();
     res.json(saved);
+
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
 };
-
 // UPDATE
 exports.updateProduct = async (req, res) => {
   try {
-    const { name } = req.body;
-    let updateData = req.body;
+    const { name, price, discountPercent } = req.body;
+    let updateData = { ...req.body };
 
-    // Xử lý images từ files upload
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+    }
+
+    const categories = parseCategories(req.body);
+    if (categories.length > 0) {
+      const validCategories = await Category.find({ _id: { $in: categories } });
+      if (validCategories.length !== categories.length) {
+        return res.status(400).json({ message: "Một hoặc nhiều thể loại không tồn tại" });
+      }
+      updateData.categories = categories;
+    }
+
+    const parsedPrice = price !== undefined ? parseFloat(price) : product.price;
+    const parsedDiscount = discountPercent !== undefined
+      ? parseFloat(discountPercent)
+      : product.discountPercent || 0;
+
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return res.status(400).json({ message: "Giá phải là số hợp lệ" });
+    }
+    if (parsedDiscount < 0 || parsedDiscount > 100) {
+      return res.status(400).json({ message: "% giảm phải từ 0 đến 100" });
+    }
+
+    updateData.price = parsedPrice;
+    updateData.discountPercent = parsedDiscount;
+    updateData.discountPrice = Math.round(parsedPrice * (100 - parsedDiscount) / 100);
+
+    // 🔥 FIX IMAGE UPDATE
+    let newImages = [];
+
     if (req.files) {
-      if (req.files.images) {
-        updateData.images = req.files.images.map(file => `/uploads/${file.filename}`);
-      } else if (req.files.image) {
-        updateData.images = req.files.image.map(file => `/uploads/${file.filename}`);
+      if (Array.isArray(req.files)) {
+        newImages = req.files.map(file => `/uploads/${file.filename}`);
+      } else if (req.files.images) {
+        newImages = req.files.images.map(file => `/uploads/${file.filename}`);
       }
     }
 
+    // 👉 nếu có ảnh mới → cộng thêm vào ảnh cũ
+    if (newImages.length > 0) {
+      updateData.images = [...product.images, ...newImages];
+    }
+
     if (name) {
-      // Tạo slug mới từ name
       updateData.slug = name.replace(/\s+/g, '-').toLowerCase().replace(/[^a-z0-9-]/g, '');
     }
 
@@ -119,12 +210,13 @@ exports.updateProduct = async (req, res) => {
       updateData,
       { new: true }
     );
+
     res.json(updated);
+
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
 };
-
 // DELETE
 exports.deleteProduct = async (req, res) => {
   try {

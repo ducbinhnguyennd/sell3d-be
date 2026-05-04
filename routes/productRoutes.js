@@ -1,37 +1,32 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
+
 const {
   getProducts,
   getProductById,
   getProductBySlug,
   createProduct,
   updateProduct,
-  deleteProduct,
-  getProductsByCategorySlug,
+  deleteProduct
 } = require("../controllers/productController");
 
-module.exports = (upload) => {
-  router.get("/", getProducts);
-  router.get("/categories/:categorySlug", getProductsByCategorySlug);
-  router.get("/id/:id", getProductById);
-  router.get("/:productSlug", getProductBySlug);
-  router.post(
-    "/",
-    upload.fields([
-      { name: "images", maxCount: 5 },
-      { name: "image", maxCount: 5 },
-    ]),
-    createProduct
-  );
-  router.put(
-    "/id/:id",
-    upload.fields([
-      { name: "images", maxCount: 5 },
-      { name: "image", maxCount: 5 },
-    ]),
-    updateProduct
-  );
-  router.delete("/id/:id", deleteProduct);
+// 🔥 MULTER
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+});
 
-  return router;
-};
+const upload = multer({ storage });
+
+// ROUTES
+router.get("/", getProducts);
+router.get("/id/:id", getProductById);
+router.get("/slug/:productSlug", getProductBySlug);
+
+router.post("/", upload.array("images", 10), createProduct);
+router.put("/id/:id", upload.array("images", 10), updateProduct);
+
+router.delete("/id/:id", deleteProduct);
+
+module.exports = router;

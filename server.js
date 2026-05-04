@@ -33,7 +33,7 @@ const upload = multer({
 });
 
 // routes
-app.use("/api/products", require("./routes/productRoutes")(upload));
+app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/categories", require("./routes/categoryRoutes"));
 app.use("/api/blogs", require("./routes/blogRoutes"));
 
