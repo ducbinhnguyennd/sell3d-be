@@ -36,6 +36,7 @@ const upload = multer({
 app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/categories", require("./routes/categoryRoutes"));
 app.use("/api/blogs", require("./routes/blogRoutes"));
+app.use("/api/auth", require("./routes/authRoutes"));
 
 // test
 app.get("/", (req, res) => {

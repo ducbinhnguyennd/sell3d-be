@@ -8,7 +8,8 @@ const {
   getProductBySlug,
   createProduct,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  searchProducts
 } = require("../controllers/productController");
 
 // 🔥 MULTER
@@ -23,7 +24,7 @@ const upload = multer({ storage });
 router.get("/", getProducts);
 router.get("/id/:id", getProductById);
 router.get("/slug/:productSlug", getProductBySlug);
-
+router.get("/search", searchProducts);
 router.post("/", upload.array("images", 10), createProduct);
 router.put("/id/:id", upload.array("images", 10), updateProduct);
 

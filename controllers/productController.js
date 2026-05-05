@@ -33,7 +33,65 @@ exports.getProducts = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+const buildVietnameseRegex = (str) => {
+  const map = {
+    a: "aàáạảãâầấậẩẫăằắặẳẵ",
+    e: "eèéẹẻẽêềếệểễ",
+    i: "iìíịỉĩ",
+    o: "oòóọỏõôồốộổỗơờớợởỡ",
+    u: "uùúụủũưừứựửữ",
+    y: "yỳýỵỷỹ",
+    d: "dđ"
+  };
 
+  return str
+    .toLowerCase()
+    .split("")
+    .map((char) => {
+      if (map[char]) {
+        return `[${map[char]}]`;
+      }
+      return char;
+    })
+    .join("");
+};
+exports.searchProducts = async (req, res) => {
+  try {
+    const { keyword, category } = req.query;
+
+    let query = {};
+
+    // 🔍 search không dấu (fake bằng regex)
+    if (keyword) {
+      const regexStr = buildVietnameseRegex(keyword);
+
+      query.name = {
+        $regex: regexStr,
+        $options: "i"
+      };
+    }
+
+    // 📂 category
+    if (category) {
+      const categoryDoc = await Category.findOne({ slug: category });
+
+      if (!categoryDoc) {
+        return res.status(404).json({ message: "Không tìm thấy thể loại" });
+      }
+
+      query.categories = categoryDoc._id;
+    }
+
+    const products = await Product.find(query)
+      .populate("categories")
+      .sort({ createdAt: -1 });
+
+    res.json(products);
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
 // GET BY ID
 exports.getProductById = async (req, res) => {
   try {

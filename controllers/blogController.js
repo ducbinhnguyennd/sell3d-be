@@ -1,5 +1,6 @@
 const Blog = require("../models/Blog");
 
+
 // GET ALL
 exports.getBlogs = async (req, res) => {
   try {
@@ -26,7 +27,19 @@ exports.getBlogById = async (req, res) => {
 // CREATE
 exports.createBlog = async (req, res) => {
   try {
-    const newBlog = new Blog(req.body);
+    const blogData = { ...req.body };
+
+    // Handle image upload
+    if (req.file) {
+      blogData.image = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    }
+
+    // Parse tags if it's a string
+    if (blogData.tags && typeof blogData.tags === 'string') {
+      blogData.tags = blogData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+    }
+
+    const newBlog = new Blog(blogData);
     const saved = await newBlog.save();
     await saved.populate("category");
     res.json(saved);
@@ -38,9 +51,21 @@ exports.createBlog = async (req, res) => {
 // UPDATE
 exports.updateBlog = async (req, res) => {
   try {
+    const blogData = { ...req.body };
+
+    // Handle image upload
+    if (req.file) {
+      blogData.image = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    }
+
+    // Parse tags if it's a string
+    if (blogData.tags && typeof blogData.tags === 'string') {
+      blogData.tags = blogData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+    }
+
     const updated = await Blog.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      blogData,
       { new: true }
     ).populate("category");
     res.json(updated);
@@ -70,5 +95,27 @@ exports.incrementViews = async (req, res) => {
     res.json(blog);
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+};
+
+// SEARCH BLOGS
+exports.searchBlogs = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) {
+      return res.status(400).json({ message: "Vui lòng nhập từ khóa tìm kiếm" });
+    }
+
+    const blogs = await Blog.find({
+      $or: [
+        { title: { $regex: q, $options: "i" } },
+        { content: { $regex: q, $options: "i" } },
+        { tags: { $elemMatch: { $regex: q, $options: "i" } } },
+      ],
+    }).populate("category");
+
+    res.json(blogs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
